@@ -1,40 +1,37 @@
 
 # coding: utf-8
 
-# In[35]:
+# In[283]:
 
 # Alexandre Brilhante
 
 import sqlite3
 import pandas as pd
 import numpy as np
-import datetime
+import seaborn as sns
+
+get_ipython().magic('matplotlib inline')
 
 db = 'database.sqlite'
 connect = sqlite3.connect(db)
 query = "SELECT name FROM sqlite_master WHERE type = 'table';"
-pd.read_sql(query, connect)
 
 
-# In[36]:
+# In[284]:
 
-# Initialize
-
-query = "SELECT * FROM player;"
+# Initialization
+query = "SELECT * FROM player"
 players_df = pd.read_sql(query, connect)
-
 query = "SELECT * FROM player_attributes"
 player_stats_df = pd.read_sql(query, connect)
 
-pd.set_option('display.max_columns', 50)
-pd.set_option('display.max_rows', 200)
 
-
-# In[37]:
+# In[299]:
 
 # Merge the player and player_attribute data
 df = players_df.merge(player_stats_df, how='inner', on='player_api_id')
 
+# Date adjusting
 df['date'] = pd.to_datetime(df['date'])
 
 # Unnecessary columns
@@ -44,49 +41,57 @@ ratings_df = df[['player_api_id', 'player_name', 'date', 'overall_rating', 'pote
 # Drop players without any rating
 ratings_df = ratings_df.drop(ratings_df[ratings_df['overall_rating'].isnull()].index)
 
-# Sorting by rating rather than age
-ratings_df.sort_values(['player_name', 'player_api_id', 'overall_rating'],
-                       ascending=[True, True, False], inplace=True)
+# Sorting by rating
+ratings_df.sort_values(['player_name', 'overall_rating'],
+                       ascending=[True, False], inplace=True)
 
 # Change the date to just the year
 ratings_df['date'] = ratings_df['date'].apply(lambda x: x.year)
 
 
-# In[44]:
+# In[300]:
 
 # Grouping the players by the year
 group = ratings_df.groupby('date')
 
-# Dropping the duplicate player entries per year
-ratings_df_unique = group.apply(lambda x: x.drop_duplicates(subset = 'player_api_id', keep = 'first'))
 
-# Grouping the df again into another df group object
-group = ratings_df_unique.groupby('date')
+# In[301]:
 
-
-# Ranking players based on overall ratings
-
-# In[50]:
-
-data = group.apply(lambda x: x.sort_values(by='overall_rating', ascending=[False]).sort_values(
-    by=['overall_rating'], ascending=[False]).reset_index(drop=True).head(15))
+# Ranking players based on overall ratings, removing duplicates first
+data = group.apply(lambda x: x.drop_duplicates(subset = 'player_api_id', keep = 'first').
+                   sort_values(by=['overall_rating'], ascending=[False]).reset_index(drop=True).head(15))
 
 
-# In[51]:
+# In[302]:
 
-""" Best team possible for each year. """
-
+# Best team possible for each year
 data
 
 
-# In[49]:
+# In[322]:
 
+# Bonus: the best team is 2007
 data.groupby('date').sum().sort_values(['overall_rating'], ascending=[False])
 
 
-# In[48]:
+# In[327]:
 
-""" The best team is 2007. """
+# Bonus: player evolution
+players = data.sort_values('overall_rating', ascending=[False])
+ids = tuple(players.player_api_id.unique())
+
+query = "SELECT player_api_id, date, overall_rating, potential FROM player_attributes WHERE player_api_id in %s" % (ids,)
+
+evolution = pd.read_sql(query, connect)
+evolution = pd.merge(evolution, best_players)
+evolution['year'] = evolution.date.str[:4].apply(int)
+evolution = evolution.groupby(['year','player_api_id','player_name']).overall_rating.mean()
+evolution = evolution.reset_index()
+
+
+# In[328]:
+
+sns.factorplot(data=evolution[evolution.player_api_id.isin(ids[0:15])], x='year', y='overall_rating', hue='player_name', size=8, aspect=2)
 
 
 # In[ ]:
